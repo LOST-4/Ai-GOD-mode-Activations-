@@ -5,7 +5,7 @@
 nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["npm install --prefer-offline"]
+cmds = ["npm install --force"]
 
 [phases.build]
 cmds = ["npm run build"]
