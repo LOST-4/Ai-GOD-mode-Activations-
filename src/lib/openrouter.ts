@@ -3,7 +3,14 @@
  * Routes requests to multiple AI models via OpenRouter
  */
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+import {
+  OPENROUTER_V1_BASE,
+  buildUpstreamHeaders,
+  chatCompletionsUrl,
+  isOpenRouterBase,
+  openaiModelsUrl,
+  upstreamRequiresApiKey,
+} from '@/lib/upstream'
 
 /**
  * Maps API error responses to specific, actionable user-facing messages.
@@ -63,6 +70,8 @@ interface SendMessageOptions {
   messages: Message[]
   model: string
   apiKey: string
+  /** OpenAI-root URL ending in /v1 (default: OpenRouter) */
+  inferenceBaseUrl?: string
   noLog?: boolean
   signal?: AbortSignal
   temperature?: number
@@ -98,6 +107,7 @@ export async function sendMessage({
   messages,
   model,
   apiKey,
+  inferenceBaseUrl,
   noLog = false,
   signal,
   temperature = 0.7,
@@ -108,7 +118,8 @@ export async function sendMessage({
   presence_penalty,
   repetition_penalty
 }: SendMessageOptions): Promise<string> {
-  if (!apiKey) {
+  const v1Base = inferenceBaseUrl ?? OPENROUTER_V1_BASE
+  if (upstreamRequiresApiKey(v1Base) && !apiKey) {
     throw new Error('No API key set. Go to Settings → API Key and enter your OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys).')
   }
 
@@ -127,27 +138,13 @@ export async function sendMessage({
   if (presence_penalty !== undefined) body.presence_penalty = presence_penalty
   if (repetition_penalty !== undefined) body.repetition_penalty = repetition_penalty
 
-  // Add provider-specific options if needed
-  const providerOptions: Record<string, unknown> = {}
-
-  // Handle no-log mode for supported providers
-  if (noLog) {
-    // OpenRouter passes through provider preferences
-    providerOptions['allow_fallbacks'] = false
+  if (noLog && isOpenRouterBase(v1Base)) {
+    body.provider = { allow_fallbacks: false }
   }
 
-  if (Object.keys(providerOptions).length > 0) {
-    body.provider = providerOptions
-  }
-
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await fetch(chatCompletionsUrl(v1Base), {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://godmod3.ai',
-      'X-Title': 'GODMOD3.AI'
-    },
+    headers: buildUpstreamHeaders(apiKey, v1Base),
     body: JSON.stringify(body),
     signal
   })
@@ -174,6 +171,7 @@ export async function* streamMessage({
   messages,
   model,
   apiKey,
+  inferenceBaseUrl,
   noLog = false,
   signal,
   temperature = 0.7,
@@ -184,7 +182,8 @@ export async function* streamMessage({
   presence_penalty,
   repetition_penalty
 }: SendMessageOptions): AsyncGenerator<string, void, unknown> {
-  if (!apiKey) {
+  const v1Base = inferenceBaseUrl ?? OPENROUTER_V1_BASE
+  if (upstreamRequiresApiKey(v1Base) && !apiKey) {
     throw new Error('No API key set. Go to Settings → API Key and enter your OpenRouter key from [openrouter.ai/keys](https://openrouter.ai/keys).')
   }
 
@@ -202,14 +201,9 @@ export async function* streamMessage({
   if (presence_penalty !== undefined) streamBody.presence_penalty = presence_penalty
   if (repetition_penalty !== undefined) streamBody.repetition_penalty = repetition_penalty
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await fetch(chatCompletionsUrl(v1Base), {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://godmod3.ai',
-      'X-Title': 'GODMOD3.AI'
-    },
+    headers: buildUpstreamHeaders(apiKey, v1Base),
     body: JSON.stringify(streamBody),
     signal
   })
@@ -260,13 +254,13 @@ export async function* streamMessage({
 /**
  * Get available models from OpenRouter
  */
-export async function getModels(apiKey: string): Promise<string[]> {
-  const response = await fetch('https://openrouter.ai/api/v1/models', {
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://godmod3.ai',
-      'X-Title': 'GODMOD3.AI'
-    }
+export async function getModels(apiKey: string, inferenceBaseUrl?: string): Promise<string[]> {
+  const v1Base = inferenceBaseUrl ?? OPENROUTER_V1_BASE
+  if (upstreamRequiresApiKey(v1Base) && !apiKey) {
+    throw new Error('API key required for this provider')
+  }
+  const response = await fetch(openaiModelsUrl(v1Base), {
+    headers: buildUpstreamHeaders(apiKey, v1Base),
   })
 
   if (!response.ok) {
@@ -280,9 +274,9 @@ export async function getModels(apiKey: string): Promise<string[]> {
 /**
  * Validate an API key
  */
-export async function validateApiKey(apiKey: string): Promise<boolean> {
+export async function validateApiKey(apiKey: string, inferenceBaseUrl?: string): Promise<boolean> {
   try {
-    await getModels(apiKey)
+    await getModels(apiKey, inferenceBaseUrl)
     return true
   } catch {
     return false
@@ -296,6 +290,8 @@ interface ProxyMessageOptions {
   model: string
   apiBaseUrl: string
   godmodeApiKey: string
+  /** Forward to API as llm_upstream_base_url (OpenAI-root /v1) */
+  llmUpstreamBaseUrl?: string
   signal?: AbortSignal
   temperature?: number
   maxTokens?: number
@@ -318,6 +314,7 @@ export async function sendMessageViaProxy({
   model,
   apiBaseUrl,
   godmodeApiKey,
+  llmUpstreamBaseUrl,
   signal,
   temperature,
   maxTokens = 4096,
@@ -343,6 +340,7 @@ export async function sendMessageViaProxy({
   if (frequency_penalty !== undefined) body.frequency_penalty = frequency_penalty
   if (presence_penalty !== undefined) body.presence_penalty = presence_penalty
   if (repetition_penalty !== undefined) body.repetition_penalty = repetition_penalty
+  if (llmUpstreamBaseUrl?.trim()) body.llm_upstream_base_url = llmUpstreamBaseUrl.trim()
 
   const response = await fetch(`${apiBaseUrl}/v1/chat/completions`, {
     method: 'POST',
@@ -434,6 +432,7 @@ export interface ConsortiumOptions {
   /** Minimum score improvement to trigger a leader upgrade (1-50). Default 8. */
   liquid_min_delta?: number
   signal?: AbortSignal
+  llmUpstreamBaseUrl?: string
 }
 
 /**
@@ -454,8 +453,16 @@ export async function streamConsortium(
     parseltongue = true, parseltongue_technique = 'leetspeak',
     parseltongue_intensity = 'medium', stm_modules = ['hedge_reducer', 'direct_mode'],
     liquid = true, liquid_min_delta = 8,
+    llmUpstreamBaseUrl,
     signal,
   } = options
+
+  const conBody: Record<string, unknown> = {
+    messages, openrouter_api_key: openrouterApiKey, tier, orchestrator_model,
+    godmode, autotune, strategy, parseltongue, parseltongue_technique,
+    parseltongue_intensity, stm_modules, stream: true, liquid, liquid_min_delta,
+  }
+  if (llmUpstreamBaseUrl?.trim()) conBody.llm_upstream_base_url = llmUpstreamBaseUrl.trim()
 
   const response = await fetch(`${apiBaseUrl}/v1/consortium/completions`, {
     method: 'POST',
@@ -463,11 +470,7 @@ export async function streamConsortium(
       'Authorization': `Bearer ${godmodeApiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      messages, openrouter_api_key: openrouterApiKey, tier, orchestrator_model,
-      godmode, autotune, strategy, parseltongue, parseltongue_technique,
-      parseltongue_intensity, stm_modules, stream: true, liquid, liquid_min_delta,
-    }),
+    body: JSON.stringify(conBody),
     signal,
   })
 
@@ -598,6 +601,10 @@ export interface UltraplinianOptions {
   /** Minimum score improvement to trigger a leader upgrade (1-50). Default 8. */
   liquid_min_delta?: number
   signal?: AbortSignal
+  /** Server uses this OpenAI /v1 root instead of OpenRouter when set */
+  llmUpstreamBaseUrl?: string
+  /** Required for local upstream: single model id to query */
+  primaryModel?: string
 }
 
 /**
@@ -617,8 +624,17 @@ export async function streamUltraplinian(
     parseltongue = true, parseltongue_technique = 'leetspeak',
     parseltongue_intensity = 'medium', stm_modules = ['hedge_reducer', 'direct_mode'],
     liquid = true, liquid_min_delta = 8,
+    llmUpstreamBaseUrl, primaryModel,
     signal,
   } = options
+
+  const ultraBody: Record<string, unknown> = {
+    messages, openrouter_api_key: openrouterApiKey, tier, godmode,
+    autotune, strategy, parseltongue, parseltongue_technique,
+    parseltongue_intensity, stm_modules, stream: liquid, liquid_min_delta,
+  }
+  if (llmUpstreamBaseUrl?.trim()) ultraBody.llm_upstream_base_url = llmUpstreamBaseUrl.trim()
+  if (primaryModel?.trim()) ultraBody.primary_model = primaryModel.trim()
 
   const response = await fetch(`${apiBaseUrl}/v1/ultraplinian/completions`, {
     method: 'POST',
@@ -626,11 +642,7 @@ export async function streamUltraplinian(
       'Authorization': `Bearer ${godmodeApiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      messages, openrouter_api_key: openrouterApiKey, tier, godmode,
-      autotune, strategy, parseltongue, parseltongue_technique,
-      parseltongue_intensity, stm_modules, stream: liquid, liquid_min_delta,
-    }),
+    body: JSON.stringify(ultraBody),
     signal,
   })
 

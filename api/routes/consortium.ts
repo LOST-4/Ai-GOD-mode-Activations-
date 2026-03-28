@@ -48,6 +48,12 @@ import {
   type ConsortiumResponse,
 } from '../lib/consortium'
 import { addEntry } from '../lib/dataset'
+import {
+  OPENROUTER_V1_BASE,
+  isOpenRouterBase,
+  normalizeApiV1Base,
+  upstreamRequiresApiKey,
+} from '../../src/lib/upstream'
 import { recordEvent, categorizeError } from '../lib/metadata'
 
 export const consortiumRoutes = Router()
@@ -96,8 +102,22 @@ consortiumRoutes.post('/completions', async (req, res) => {
       return
     }
 
+    const rawUpstream = typeof req.body.llm_upstream_base_url === 'string' ? req.body.llm_upstream_base_url.trim() : ''
+    const resolvedUpstream = rawUpstream
+      ? normalizeApiV1Base(rawUpstream)
+      : (process.env.LLM_UPSTREAM_BASE_URL?.trim()
+          ? normalizeApiV1Base(process.env.LLM_UPSTREAM_BASE_URL)
+          : OPENROUTER_V1_BASE)
+
+    if (!isOpenRouterBase(resolvedUpstream)) {
+      res.status(400).json({
+        error: 'CONSORTIUM requires an OpenRouter upstream (multi-model collection + orchestrator). Use standard or ULTRAPLINIAN with primary_model for local LLMs.',
+      })
+      return
+    }
+
     const openrouter_api_key = caller_key || process.env.OPENROUTER_API_KEY || ''
-    if (!openrouter_api_key) {
+    if (upstreamRequiresApiKey(resolvedUpstream) && !openrouter_api_key) {
       res.status(400).json({
         error: 'No OpenRouter API key available. Either pass openrouter_api_key in the request body, or set OPENROUTER_API_KEY on the server.',
       })
@@ -146,10 +166,9 @@ consortiumRoutes.post('/completions', async (req, res) => {
     ]
 
     // ── AutoTune ──────────────────────────────────────────────────────
-    const conversationHistory = normalizedMessages
+    const convoForTune = normalizedMessages
       .filter(m => m.role !== 'system')
-      .map(m => m.content)
-      .join('\n')
+      .map(m => ({ role: m.role, content: m.content }))
 
     let autotuneResult: any = null
     let computedParams: Record<string, number | undefined> = {
@@ -162,12 +181,12 @@ consortiumRoutes.post('/completions', async (req, res) => {
         ? strategy as AutoTuneStrategy
         : 'adaptive' as AutoTuneStrategy
 
-      autotuneResult = computeAutoTuneParams(
-        userContent,
-        conversationHistory,
-        validStrategy,
-        getSharedProfiles(),
-      )
+      autotuneResult = computeAutoTuneParams({
+        strategy: validStrategy,
+        message: userContent,
+        conversationHistory: convoForTune,
+        learnedProfiles: getSharedProfiles(),
+      })
 
       computedParams = {
         temperature: temperature ?? autotuneResult.params.temperature,
@@ -196,7 +215,7 @@ consortiumRoutes.post('/completions', async (req, res) => {
         customTriggers: [],
       }
       const transformed = applyParseltongue(userContent, config)
-      if (transformed.transformed) {
+      if (transformed.triggersFound.length > 0) {
         parseltongueResult = {
           triggers_found: transformed.triggersFound,
           technique_used: parseltongue_technique,
@@ -204,7 +223,7 @@ consortiumRoutes.post('/completions', async (req, res) => {
         }
         processedMessages = baseMessages.map(m => {
           if (m.content === userContent) {
-            return { ...m, content: transformed.text }
+            return { ...m, content: transformed.transformedText }
           }
           return m
         })
@@ -265,6 +284,7 @@ consortiumRoutes.post('/completions', async (req, res) => {
         {
           minResponses: Math.min(3, models.length),
           hardTimeout: 60000,
+          upstreamV1Base: resolvedUpstream,
           onModelResult: (result, collected, total) => {
             const score = result.success ? scoreResponse(result.content, userContent) : 0
             result.score = score
@@ -352,6 +372,7 @@ consortiumRoutes.post('/completions', async (req, res) => {
           openrouter_api_key,
           resolvedOrchestrator,
           max_tokens,
+          resolvedUpstream,
         )
       } catch (err: any) {
         sse('consortium:error', { error: `Orchestrator failed: ${err.message}` })
@@ -470,6 +491,7 @@ consortiumRoutes.post('/completions', async (req, res) => {
       {
         minResponses: Math.min(3, models.length),
         hardTimeout: 60000,
+        upstreamV1Base: resolvedUpstream,
       },
     )
 
@@ -507,6 +529,7 @@ consortiumRoutes.post('/completions', async (req, res) => {
         openrouter_api_key,
         resolvedOrchestrator,
         max_tokens,
+        resolvedUpstream,
       )
     } catch (err: any) {
       res.status(502).json({

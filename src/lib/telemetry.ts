@@ -186,18 +186,17 @@ export function stopTelemetry(): void {
 
 function flush(): void {
   if (eventBuffer.length === 0) return
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    eventBuffer = []
+    return
+  }
 
-  // Grab current buffer and reset
   const events = eventBuffer
   eventBuffer = []
 
-  // Fire-and-forget — never block the UI
   fetch(TELEMETRY_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ events }),
-  }).catch(() => {
-    // Silent fail — telemetry should never disrupt the user experience.
-    // Events are lost if the endpoint is down; this is acceptable.
-  })
+  }).catch(() => {})
 }

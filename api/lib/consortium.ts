@@ -73,13 +73,14 @@ export interface ConsortiumResult {
 
 // ── Collection Config ───────────────────────────────────────────────
 
-interface CollectionConfig {
+export interface CollectionConfig {
   /** Wait for at least this many successful responses (default: 3) */
   minResponses?: number
   /** Max time to wait for collection (default: 60000ms — longer than ULTRAPLINIAN) */
   hardTimeout?: number
   /** Called as each model finishes */
   onModelResult?: (result: ModelResult, collected: number, total: number) => void
+  upstreamV1Base?: string
 }
 
 // ── Orchestrator System Prompt ──────────────────────────────────────
@@ -187,7 +188,7 @@ export function collectAllResponses(
 
     // Fire all queries
     for (const model of models) {
-      queryModel(model, messages, apiKey, params, controller.signal)
+      queryModel(model, messages, apiKey, params, { signal: controller.signal, upstreamV1Base: config.upstreamV1Base })
         .then(result => {
           if (resolved) return
           results.push(result)
@@ -250,6 +251,7 @@ export async function synthesize(
   apiKey: string,
   orchestratorModel: OrchestratorModel = ORCHESTRATOR_MODELS[0],
   maxTokens: number = 8192,
+  upstreamV1Base?: string,
 ): Promise<{ synthesis: string; duration_ms: number; model: string }> {
   const orchestrationPrompt = buildOrchestrationPrompt(userQuery, responses)
 
@@ -262,7 +264,8 @@ export async function synthesize(
     orchestratorModel,
     messages,
     apiKey,
-    { temperature: 0.3, max_tokens: maxTokens }, // Low temp for analytical synthesis
+    { temperature: 0.3, max_tokens: maxTokens },
+    { upstreamV1Base },
   )
 
   if (!result.success || !result.content) {
@@ -283,6 +286,7 @@ export interface ConsortiumPipelineConfig {
   orchestratorModel?: OrchestratorModel
   maxTokens?: number
   collectionConfig?: CollectionConfig
+  upstreamV1Base?: string
 }
 
 /**
@@ -316,7 +320,7 @@ export async function runConsortium(
     messages,
     apiKey,
     params,
-    config.collectionConfig,
+    { ...config.collectionConfig, upstreamV1Base: config.upstreamV1Base },
   )
 
   const collectionDuration = Date.now() - collectionStart
@@ -345,6 +349,7 @@ export async function runConsortium(
     apiKey,
     config.orchestratorModel,
     config.maxTokens ?? params.max_tokens ?? 8192,
+    config.upstreamV1Base,
   )
 
   return {

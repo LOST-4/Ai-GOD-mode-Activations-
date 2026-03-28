@@ -42,6 +42,12 @@ import {
 } from '../lib/ultraplinian'
 import { addEntry } from '../lib/dataset'
 import { recordEvent, categorizeError } from '../lib/metadata'
+import {
+  OPENROUTER_V1_BASE,
+  isOpenRouterBase,
+  normalizeApiV1Base,
+  upstreamRequiresApiKey,
+} from '../../src/lib/upstream'
 
 export const ultraplinianRoutes = Router()
 
@@ -86,9 +92,15 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
       return
     }
 
-    // Resolve OpenRouter key: caller-provided > server-side env var
+    const rawUpstream = typeof req.body.llm_upstream_base_url === 'string' ? req.body.llm_upstream_base_url.trim() : ''
+    const resolvedUpstream = rawUpstream
+      ? normalizeApiV1Base(rawUpstream)
+      : (process.env.LLM_UPSTREAM_BASE_URL?.trim()
+          ? normalizeApiV1Base(process.env.LLM_UPSTREAM_BASE_URL)
+          : OPENROUTER_V1_BASE)
+
     const openrouter_api_key = caller_key || process.env.OPENROUTER_API_KEY || ''
-    if (!openrouter_api_key) {
+    if (upstreamRequiresApiKey(resolvedUpstream) && !openrouter_api_key) {
       res.status(400).json({
         error: 'No OpenRouter API key available. Either pass openrouter_api_key in the request body, or set OPENROUTER_API_KEY on the server. Get a key at https://openrouter.ai/keys',
       })
@@ -189,7 +201,7 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
     }
 
     // ── Parseltongue ─────────────────────────────────────────────────
-    let parseltongueResult = null
+    let parseltongueResult: any = null
     let processedMessages = baseMessages
 
     if (parseltongue) {
@@ -217,7 +229,17 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
     }
 
     // ── Shared race setup ────────────────────────────────────────────
-    const models = getModelsForTier(tier)
+    let models = getModelsForTier(tier)
+    if (!isOpenRouterBase(resolvedUpstream)) {
+      const primary = typeof req.body.primary_model === 'string' ? req.body.primary_model.trim() : ''
+      if (!primary) {
+        res.status(400).json({
+          error: 'Local LLM upstream requires primary_model (e.g. llama3.2) in the request body.',
+        })
+        return
+      }
+      models = [primary]
+    }
     const raceParams = {
       temperature: finalParams.temperature,
       max_tokens,
@@ -273,6 +295,7 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
           minResults: Math.min(5, models.length),
           gracePeriod: 5000,
           hardTimeout: 45000,
+          upstreamV1Base: resolvedUpstream,
           onResult: (result) => {
             modelsResponded++
             const scored: ModelResult = {
@@ -373,7 +396,7 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
           model: winner.model, mode: 'ultraplinian',
           messages: normalizedMessages.filter(m => m.role !== 'system'),
           response: finalResponse,
-          autotune: autotuneResult ? { strategy, detected_context: autotuneResult.detectedContext, confidence: autotuneResult.confidence, params: autotuneResult.params, reasoning: autotuneResult.reasoning } : undefined,
+          autotune: autotuneResult ? { strategy, detected_context: autotuneResult.detectedContext, confidence: autotuneResult.confidence, params: autotuneResult.params as unknown as Record<string, number>, reasoning: autotuneResult.reasoning } : undefined,
           parseltongue: parseltongueResult || undefined,
           stm: stmResult ? { modules_applied: stmResult.modules_applied } : undefined,
           ultraplinian: { tier, models_queried: models, winner_model: winner.model, all_scores: scoredResults.map(r => ({ model: r.model, score: r.score, duration_ms: r.duration_ms, success: r.success })), total_duration_ms: totalDuration },
@@ -474,6 +497,7 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
         minResults: Math.min(5, models.length),
         gracePeriod: 5000,
         hardTimeout: 45000,
+        upstreamV1Base: resolvedUpstream,
       },
     )
 
@@ -504,6 +528,13 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
         mode: 'ultraplinian-failed',
         tier,
         stream,
+        pipeline: {
+          godmode,
+          autotune: !!autotuneResult,
+          parseltongue: !!parseltongueResult,
+          stm_modules: stm_modules || [],
+          strategy,
+        },
         models_queried: models.length,
         models_succeeded: scoredResults.filter(r => r.success).length,
         model_results: scoredResults.map(r => ({
@@ -512,6 +543,7 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
           error_type: r.error ? categorizeError(r.error) : undefined,
         })),
         total_duration_ms: Date.now() - startTime,
+        response_length: 0,
       })
       res.status(502).json({
         error: 'All models failed in ULTRAPLINIAN mode',
@@ -551,7 +583,7 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
         model: winner.model, mode: 'ultraplinian',
         messages: normalizedMessages.filter(m => m.role !== 'system'),
         response: finalResponse,
-        autotune: autotuneResult ? { strategy, detected_context: autotuneResult.detectedContext, confidence: autotuneResult.confidence, params: autotuneResult.params, reasoning: autotuneResult.reasoning } : undefined,
+        autotune: autotuneResult ? { strategy, detected_context: autotuneResult.detectedContext, confidence: autotuneResult.confidence, params: autotuneResult.params as unknown as Record<string, number>, reasoning: autotuneResult.reasoning } : undefined,
         parseltongue: parseltongueResult || undefined,
         stm: stmResult ? { modules_applied: stmResult.modules_applied } : undefined,
         ultraplinian: { tier, models_queried: models, winner_model: winner.model, all_scores: scoredResults.map(r => ({ model: r.model, score: r.score, duration_ms: r.duration_ms, success: r.success })), total_duration_ms: totalDuration },
@@ -631,10 +663,13 @@ ultraplinianRoutes.post('/completions', async (req, res) => {
     recordEvent({
       endpoint: '/v1/ultraplinian/completions',
       mode: 'ultraplinian-error',
+      stream: !!req.body?.stream,
       error_type: 'internal_error',
+      pipeline: { godmode: false, autotune: false, parseltongue: false, stm_modules: [] },
       total_duration_ms: Date.now() - startTime,
+      response_length: 0,
     })
-    if (stream) {
+    if (req.body?.stream) {
       try {
         res.write(`event: race:error\ndata: ${JSON.stringify({ error: 'Internal server error' })}\n\n`)
         res.end()

@@ -41,6 +41,14 @@ import {
 } from '../lib/consortium'
 import { addEntry } from '../lib/dataset'
 import { recordEvent, categorizeError } from '../lib/metadata'
+import {
+  OPENROUTER_V1_BASE,
+  buildUpstreamHeaders,
+  chatCompletionsUrl,
+  isOpenRouterBase,
+  normalizeApiV1Base,
+  upstreamRequiresApiKey,
+} from '../../src/lib/upstream'
 
 export const chatRoutes = Router()
 
@@ -231,6 +239,13 @@ chatRoutes.post('/completions', async (req, res) => {
       contribute_to_dataset = false,
     } = req.body
 
+    const rawUp = typeof req.body.llm_upstream_base_url === 'string' ? req.body.llm_upstream_base_url.trim() : ''
+    const resolvedUpstream = rawUp
+      ? normalizeApiV1Base(rawUp)
+      : (process.env.LLM_UPSTREAM_BASE_URL?.trim()
+          ? normalizeApiV1Base(process.env.LLM_UPSTREAM_BASE_URL)
+          : OPENROUTER_V1_BASE)
+
     // Validate
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       res.status(400).json({
@@ -254,9 +269,8 @@ chatRoutes.post('/completions', async (req, res) => {
       return
     }
 
-    // Resolve OpenRouter key
     const openrouter_api_key = caller_key || process.env.OPENROUTER_API_KEY || ''
-    if (!openrouter_api_key) {
+    if (upstreamRequiresApiKey(resolvedUpstream) && !openrouter_api_key) {
       res.status(400).json({
         error: {
           message: 'No OpenRouter API key available. Either pass openrouter_api_key in the request body, or set OPENROUTER_API_KEY on the server.',
@@ -301,7 +315,21 @@ chatRoutes.post('/completions', async (req, res) => {
 
       // Cap by tier if applicable
       const maxModels = tierConfig?.maxRaceModels ?? raceModelsArray.length
-      const models = raceModelsArray.slice(0, maxModels)
+      let models = raceModelsArray.slice(0, maxModels)
+      if (!isOpenRouterBase(resolvedUpstream)) {
+        const primary = typeof req.body.primary_model === 'string' ? req.body.primary_model.trim() : ''
+        if (!primary) {
+          res.status(400).json({
+            error: {
+              message: 'Local LLM upstream requires primary_model in the request body.',
+              type: 'invalid_request_error',
+              code: 'missing_primary_model',
+            },
+          })
+          return
+        }
+        models = [primary]
+      }
 
       const raceParams = {
         temperature: pipeline.finalParams.temperature ?? 0.7,
@@ -318,7 +346,7 @@ chatRoutes.post('/completions', async (req, res) => {
         pipeline.processedMessages,
         openrouter_api_key,
         raceParams,
-        { minResults: Math.min(5, models.length), gracePeriod: 5000, hardTimeout: 45000 },
+        { minResults: Math.min(5, models.length), gracePeriod: 5000, hardTimeout: 45000, upstreamV1Base: resolvedUpstream },
       )
 
       const scoredResults: ModelResult[] = results.map(r => ({
@@ -464,6 +492,17 @@ chatRoutes.post('/completions', async (req, res) => {
         frequency_penalty, presence_penalty, repetition_penalty,
       })
 
+      if (!isOpenRouterBase(resolvedUpstream)) {
+        res.status(400).json({
+          error: {
+            message: 'CONSORTIUM virtual model requires OpenRouter upstream. Use a local model with standard chat or ULTRAPLINIAN + primary_model.',
+            type: 'invalid_request_error',
+            code: 'consortium_requires_openrouter',
+          },
+        })
+        return
+      }
+
       const raceModelsArray = getModelsForTier(raceTier)
       const maxModels = tierConfig?.maxRaceModels ?? raceModelsArray.length
       const models = raceModelsArray.slice(0, maxModels)
@@ -484,7 +523,7 @@ chatRoutes.post('/completions', async (req, res) => {
         pipeline.processedMessages,
         openrouter_api_key,
         queryParams,
-        { minResponses: Math.min(3, models.length), hardTimeout: 60000 },
+        { minResponses: Math.min(3, models.length), hardTimeout: 60000, upstreamV1Base: resolvedUpstream },
       )
 
       const scoredResponses: ConsortiumResponse[] = results.map(r => ({
@@ -515,6 +554,7 @@ chatRoutes.post('/completions', async (req, res) => {
           openrouter_api_key,
           orchestratorModel,
           max_tokens,
+          resolvedUpstream,
         )
       } catch (err: any) {
         res.status(502).json({
@@ -656,14 +696,9 @@ chatRoutes.post('/completions', async (req, res) => {
         if (pipeline.finalParams.presence_penalty !== undefined) streamBody.presence_penalty = pipeline.finalParams.presence_penalty
         if (pipeline.finalParams.repetition_penalty !== undefined) streamBody.repetition_penalty = pipeline.finalParams.repetition_penalty
 
-        const upstreamRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const upstreamRes = await fetch(chatCompletionsUrl(resolvedUpstream), {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openrouter_api_key}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://godmod3.ai',
-            'X-Title': 'GODMOD3.AI',
-          },
+          headers: buildUpstreamHeaders(openrouter_api_key, resolvedUpstream),
           body: JSON.stringify(streamBody),
         })
 
@@ -842,6 +877,7 @@ chatRoutes.post('/completions', async (req, res) => {
       messages: pipeline.processedMessages,
       model,
       apiKey: openrouter_api_key,
+      inferenceBaseUrl: resolvedUpstream,
       temperature: pipeline.finalParams.temperature,
       maxTokens: max_tokens,
       top_p: pipeline.finalParams.top_p,

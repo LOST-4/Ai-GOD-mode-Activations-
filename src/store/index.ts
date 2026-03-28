@@ -7,9 +7,10 @@ import { createInitialFeedbackState, processFeedback, computeHeuristics } from '
 import type { ParseltongueConfig, ObfuscationTechnique } from '@/lib/parseltongue'
 import { getDefaultConfig as getDefaultParseltongueConfig } from '@/lib/parseltongue'
 import { GODMODE_SYSTEM_PROMPT } from '@/lib/godmode-prompt'
+import type { InferenceProvider } from '@/lib/upstream'
 
 // Types
-export type Theme = 'matrix' | 'hacker' | 'glyph' | 'minimal'
+export type Theme = 'matrix' | 'hacker' | 'glyph' | 'minimal' | 'dark' | 'light'
 
 export interface RaceResponse {
   model: string
@@ -34,7 +35,11 @@ export interface Message {
   feedbackRating?: 1 | -1
   /** All responses from an ULTRAPLINIAN race, for browsing past results */
   raceResponses?: RaceResponse[]
+  /** Assistant error bubble (preferred over markdown in content) */
+  err?: { message: string; code?: string }
 }
+
+export type ChatMode = 'standard' | 'ultraplinian' | 'consortium'
 
 export interface Conversation {
   id: string
@@ -44,6 +49,15 @@ export interface Conversation {
   updatedAt: number
   persona: string
   model: string
+  workspaceId?: string
+  mode: ChatMode
+}
+
+export interface Workspace {
+  id: string
+  name: string
+  emoji: string
+  createdAt: number
 }
 
 export interface Persona {
@@ -99,6 +113,8 @@ export interface AppState {
   // Core state
   theme: Theme
   apiKey: string
+  inferenceProvider: InferenceProvider
+  inferenceCustomBaseUrl: string
   defaultModel: string
   conversations: Conversation[]
   currentConversationId: string | null
@@ -175,12 +191,27 @@ export interface AppState {
   /** Whether a race is currently in progress */
   ultraplinianRacing: boolean
 
-  // Computed
-  currentConversation: Conversation | null
+  // Workspace state
+  workspaces: Workspace[]
+  activeWorkspaceId: string | null
+  suppressWorkspaceDeleteConfirm: boolean
+
+  // Workspace actions
+  createWorkspace: (name: string, emoji?: string) => string
+  renameWorkspace: (id: string, name: string) => void
+  deleteWorkspace: (id: string) => void
+  setActiveWorkspace: (id: string | null) => void
+  moveConversationToWorkspace: (conversationId: string, workspaceId: string | null) => void
+  setSuppressWorkspaceDeleteConfirm: (suppress: boolean) => void
+
+  // Derived (use useCurrentConversation() hook instead)
+  // currentConversation removed — JS getters break under zustand set()
 
   // Actions
   setTheme: (theme: Theme) => void
   setApiKey: (key: string) => void
+  setInferenceProvider: (p: InferenceProvider) => void
+  setInferenceCustomBaseUrl: (url: string) => void
   setDefaultModel: (model: string) => void
   setShowSettings: (show: boolean) => void
   setShowMagic: (show: boolean) => void
@@ -206,6 +237,7 @@ export interface AppState {
   createConversation: () => string
   selectConversation: (id: string) => void
   deleteConversation: (id: string) => void
+  setConversationMode: (id: string, mode: ChatMode) => void
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => string
   updateMessageContent: (conversationId: string, messageId: string, content: string, extra?: Partial<Message>) => void
   updateConversationTitle: (id: string, title: string) => void
@@ -349,8 +381,10 @@ export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       // Initial state
-      theme: 'matrix',
+      theme: 'dark',
       apiKey: '',
+      inferenceProvider: 'openrouter' as InferenceProvider,
+      inferenceCustomBaseUrl: '',
       defaultModel: 'anthropic/claude-opus-4.6',
       conversations: [],
       currentConversationId: null,
@@ -405,6 +439,11 @@ export const useStore = create<AppState>()(
       liquidMinDelta: 8,
       promptsTried: 0,
 
+      // Workspace initial state
+      workspaces: [],
+      activeWorkspaceId: null,
+      suppressWorkspaceDeleteConfirm: false,
+
       // ULTRAPLINIAN initial state
       ultraplinianEnabled: false,
       ultraplinianTier: 'fast' as const,
@@ -417,16 +456,35 @@ export const useStore = create<AppState>()(
       ultraplinianModelsTotal: 0,
       ultraplinianRacing: false,
 
-      // Computed getter
-      get currentConversation() {
-        const state = get()
-        return state.conversations.find(c => c.id === state.currentConversationId) || null
-      },
-
       // Actions
       setTheme: (theme) => set({ theme }),
       setApiKey: (apiKey) => set({ apiKey }),
-      setDefaultModel: (defaultModel) => set({ defaultModel }),
+      setInferenceProvider: (inferenceProvider) => {
+        const state = get()
+        const isNowCloud = inferenceProvider === 'openrouter'
+        const wasCloud = state.inferenceProvider === 'openrouter'
+        const updates: Partial<AppState> = { inferenceProvider }
+        const newModel = isNowCloud && !wasCloud ? 'anthropic/claude-sonnet-4.6'
+          : !isNowCloud && wasCloud ? '' : undefined
+        if (newModel !== undefined) updates.defaultModel = newModel
+        updates.conversations = state.conversations.map(c => ({
+          ...c,
+          ...(newModel !== undefined ? { model: newModel } : {}),
+          ...(!isNowCloud && c.mode !== 'standard' ? { mode: 'standard' as const } : {}),
+        }))
+        set(updates as any)
+      },
+      setInferenceCustomBaseUrl: (inferenceCustomBaseUrl) => set({ inferenceCustomBaseUrl }),
+      setDefaultModel: (defaultModel) => {
+        const state = get()
+        const updates: any = { defaultModel }
+        if (state.currentConversationId) {
+          updates.conversations = state.conversations.map(c =>
+            c.id === state.currentConversationId ? { ...c, model: defaultModel } : c
+          )
+        }
+        set(updates)
+      },
       setShowSettings: (showSettings) => set({ showSettings }),
       setShowMagic: (showMagic) => set({ showMagic }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
@@ -506,7 +564,11 @@ export const useStore = create<AppState>()(
           createdAt: Date.now(),
           updatedAt: Date.now(),
           persona: state.currentPersona,
-          model: state.defaultModel
+          model: state.defaultModel,
+          workspaceId: state.activeWorkspaceId || undefined,
+          mode: state.ultraplinianEnabled ? 'ultraplinian'
+            : state.consortiumEnabled ? 'consortium'
+            : 'standard',
         }
         set({
           conversations: [newConversation, ...state.conversations],
@@ -516,6 +578,14 @@ export const useStore = create<AppState>()(
       },
 
       selectConversation: (id) => set({ currentConversationId: id }),
+
+      setConversationMode: (id, mode) => {
+        set({
+          conversations: get().conversations.map(c =>
+            c.id === id ? { ...c, mode } : c
+          )
+        })
+      },
 
       deleteConversation: (id) => {
         const state = get()
@@ -691,6 +761,33 @@ export const useStore = create<AppState>()(
         consortiumModelsTotal: 0, consortiumOrchestratorModel: null,
       }),
 
+      // Workspace actions
+      createWorkspace: (name, emoji = '📁') => {
+        const id = uuidv4()
+        set({ workspaces: [...get().workspaces, { id, name, emoji, createdAt: Date.now() }] })
+        return id
+      },
+      renameWorkspace: (id, name) => {
+        set({ workspaces: get().workspaces.map(w => w.id === id ? { ...w, name } : w) })
+      },
+      deleteWorkspace: (id) => {
+        const state = get()
+        set({
+          workspaces: state.workspaces.filter(w => w.id !== id),
+          conversations: state.conversations.map(c => c.workspaceId === id ? { ...c, workspaceId: undefined } : c),
+          activeWorkspaceId: state.activeWorkspaceId === id ? null : state.activeWorkspaceId,
+        })
+      },
+      setActiveWorkspace: (activeWorkspaceId) => set({ activeWorkspaceId }),
+      moveConversationToWorkspace: (conversationId, workspaceId) => {
+        set({
+          conversations: get().conversations.map(c =>
+            c.id === conversationId ? { ...c, workspaceId: workspaceId || undefined } : c
+          ),
+        })
+      },
+      setSuppressWorkspaceDeleteConfirm: (suppressWorkspaceDeleteConfirm) => set({ suppressWorkspaceDeleteConfirm }),
+
       // Liquid Response actions
       setLiquidResponseEnabled: (liquidResponseEnabled) => set({ liquidResponseEnabled }),
       setLiquidMinDelta: (liquidMinDelta) => set({ liquidMinDelta: Math.max(1, Math.min(50, liquidMinDelta)) }),
@@ -717,7 +814,7 @@ export const useStore = create<AppState>()(
         // stmModules excluded: transformer functions can't be serialized/deserialized
         const allowed = [
           'conversations', 'currentConversationId', 'theme', 'defaultModel',
-          'currentPersona', 'apiKey', 'autoTuneEnabled', 'autoTuneStrategy',
+          'currentPersona', 'apiKey', 'inferenceProvider', 'inferenceCustomBaseUrl', 'autoTuneEnabled', 'autoTuneStrategy',
           'autoTuneOverrides', 'feedbackState', 'parseltongueConfig',
           'memories', 'memoriesEnabled', 'customSystemPrompt', 'useCustomSystemPrompt',
           'consortiumEnabled', 'consortiumTier', 'liquidResponseEnabled', 'liquidMinDelta',
@@ -739,11 +836,13 @@ export const useStore = create<AppState>()(
         theme: state.theme,
         showMagic: state.showMagic,
         apiKey: state.apiKey,
+        inferenceProvider: state.inferenceProvider,
+        inferenceCustomBaseUrl: state.inferenceCustomBaseUrl,
         defaultModel: state.defaultModel,
         conversations: state.conversations,
         currentConversationId: state.currentConversationId,
         currentPersona: state.currentPersona,
-        stmModules: state.stmModules,
+        stmModules: state.stmModules.map(m => ({ id: m.id, enabled: m.enabled })),
         datasetGenerationEnabled: state.datasetGenerationEnabled,
         noLogMode: state.noLogMode,
         autoTuneEnabled: state.autoTuneEnabled,
@@ -770,12 +869,31 @@ export const useStore = create<AppState>()(
         ultraplinianTier: state.ultraplinianTier,
         ultraplinianApiUrl: state.ultraplinianApiUrl,
         ultraplinianApiKey: state.ultraplinianApiKey,
+        // Workspace persistence
+        workspaces: state.workspaces,
+        activeWorkspaceId: state.activeWorkspaceId,
+        suppressWorkspaceDeleteConfirm: state.suppressWorkspaceDeleteConfirm,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          // Restore STM transformer functions lost during JSON serialization
+          state.stmModules = defaultSTMModules.map(def => {
+            const saved = state.stmModules.find((s: any) => s.id === def.id)
+            return { ...def, enabled: saved?.enabled ?? def.enabled }
+          })
+          // Migrate conversations: add mode field + downgrade non-standard modes when provider is local
+          const isLocal = state.inferenceProvider !== 'openrouter'
+          state.conversations = state.conversations.map(c => ({
+            ...c,
+            mode: isLocal ? 'standard' : ((c as any).mode || 'standard'),
+          }))
           state.setHydrated()
         }
       }
     }
   )
 )
+
+/** Reactive derived selector — replaces the broken JS getter */
+export const useCurrentConversation = () =>
+  useStore(s => s.conversations.find(c => c.id === s.currentConversationId) ?? null)

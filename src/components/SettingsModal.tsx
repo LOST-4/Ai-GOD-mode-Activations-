@@ -37,7 +37,9 @@ import {
   Crown,
   Users,
   Droplets,
-  HardDrive
+  HardDrive,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import type { AutoTuneStrategy, AutoTuneParams } from '@/lib/autotune'
 import {
@@ -61,111 +63,56 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-md"
         onClick={onClose}
       />
 
-      {/* Modal */}
-      <div className="relative w-full max-w-2xl bg-theme-bg border border-theme-primary rounded-lg shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-5xl glass-panel rounded-3xl md:rounded-3xl overflow-hidden settings-modal-responsive"
+        style={{ background: 'var(--dim)', boxShadow: 'var(--shadow)', maxHeight: '85vh' }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-theme-primary">
-          <h2 className="text-xl font-bold theme-primary">Settings</h2>
+        <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4"
+          style={{ borderBottom: '1px solid var(--glass-border)' }}>
+          <h2 className="text-base md:text-lg font-bold" style={{ color: 'var(--text)' }}>Settings</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-theme-accent rounded-lg transition-colors"
+            className="p-2 rounded-xl hover:bg-[var(--glass-hover)] transition-colors"
             aria-label="Close settings"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" style={{ color: 'var(--secondary)' }} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex min-h-[400px]">
-          {/* Sidebar */}
-          <nav className="w-48 border-r border-theme-primary p-2">
-            <TabButton
-              icon={<Key className="w-4 h-4" />}
-              label="API Key"
-              active={activeTab === 'api'}
-              onClick={() => setActiveTab('api')}
-            />
-            <TabButton
-              icon={<FileText className="w-4 h-4" />}
-              label="System Prompt"
-              active={activeTab === 'prompt'}
-              onClick={() => setActiveTab('prompt')}
-            />
-            <TabButton
-              icon={<SlidersHorizontal className="w-4 h-4" />}
-              label="AutoTune"
-              active={activeTab === 'autotune'}
-              onClick={() => setActiveTab('autotune')}
-            />
-            <TabButton
-              icon={<Palette className="w-4 h-4" />}
-              label="Appearance"
-              active={activeTab === 'appearance'}
-              onClick={() => setActiveTab('appearance')}
-            />
-            <TabButton
-              icon={<Shield className="w-4 h-4" />}
-              label="Privacy"
-              active={activeTab === 'privacy'}
-              onClick={() => setActiveTab('privacy')}
-            />
-            <TabButton
-              icon={<Droplets className="w-4 h-4" />}
-              label="Liquid"
-              active={activeTab === 'liquid'}
-              onClick={() => setActiveTab('liquid')}
-            />
-            <TabButton
-              icon={<Skull className="w-4 h-4" />}
-              label="Parseltongue"
-              active={activeTab === 'parseltongue'}
-              onClick={() => setActiveTab('parseltongue')}
-            />
-            <TabButton
-              icon={<Zap className="w-4 h-4" />}
-              label="STM Modules"
-              active={activeTab === 'stm'}
-              onClick={() => setActiveTab('stm')}
-            />
-            <TabButton
-              icon={<Sparkles className="w-4 h-4" />}
-              label="Memory"
-              active={activeTab === 'memory'}
-              onClick={() => setActiveTab('memory')}
-            />
-            <TabButton
-              icon={<Swords className="w-4 h-4" />}
-              label="ULTRAPLINIAN"
-              active={activeTab === 'ultraplinian'}
-              onClick={() => setActiveTab('ultraplinian')}
-            />
-            <TabButton
-              icon={<Users className="w-4 h-4" />}
-              label="CONSORTIUM"
-              active={activeTab === 'consortium'}
-              onClick={() => setActiveTab('consortium')}
-            />
-            <TabButton
-              icon={<Crown className="w-4 h-4" />}
-              label="Plan"
-              active={activeTab === 'plan'}
-              onClick={() => setActiveTab('plan')}
-            />
-            <TabButton
-              icon={<Download className="w-4 h-4" />}
-              label="Data"
-              active={activeTab === 'data'}
-              onClick={() => setActiveTab('data')}
-            />
+        <div className="flex flex-col md:flex-row" style={{ minHeight: '400px', maxHeight: 'calc(85vh - 56px)' }}>
+          {/* Nav */}
+          <nav className="w-full md:w-56 p-2 md:p-3 overflow-y-auto md:overflow-y-auto overflow-x-auto flex-shrink-0 settings-nav-responsive"
+            style={{ borderRight: '1px solid var(--glass-border)' }}>
+            <NavSection label="General">
+              <TabButton icon={<Key className="w-4 h-4" />} label="Provider & API" active={activeTab === 'api'} onClick={() => setActiveTab('api')} />
+              <TabButton icon={<Palette className="w-4 h-4" />} label="Appearance" active={activeTab === 'appearance'} onClick={() => setActiveTab('appearance')} />
+            </NavSection>
+            <NavSection label="AI Engine">
+              <TabButton icon={<FileText className="w-4 h-4" />} label="System Prompt" active={activeTab === 'prompt'} onClick={() => setActiveTab('prompt')} />
+              <TabButton icon={<SlidersHorizontal className="w-4 h-4" />} label="AutoTune" active={activeTab === 'autotune'} onClick={() => setActiveTab('autotune')} />
+              <TabButton icon={<Droplets className="w-4 h-4" />} label="Liquid Response" active={activeTab === 'liquid'} onClick={() => setActiveTab('liquid')} />
+            </NavSection>
+            <NavSection label="Modes">
+              <TabButton icon={<Swords className="w-4 h-4" />} label="ULTRAPLINIAN" active={activeTab === 'ultraplinian'} onClick={() => setActiveTab('ultraplinian')} />
+              <TabButton icon={<Users className="w-4 h-4" />} label="CONSORTIUM" active={activeTab === 'consortium'} onClick={() => setActiveTab('consortium')} />
+            </NavSection>
+            <NavSection label="Stealth">
+              <TabButton icon={<Skull className="w-4 h-4" />} label="Parseltongue" active={activeTab === 'parseltongue'} onClick={() => setActiveTab('parseltongue')} />
+              <TabButton icon={<Zap className="w-4 h-4" />} label="STM Modules" active={activeTab === 'stm'} onClick={() => setActiveTab('stm')} />
+            </NavSection>
+            <NavSection label="Data & Privacy">
+              <TabButton icon={<Sparkles className="w-4 h-4" />} label="Memory" active={activeTab === 'memory'} onClick={() => setActiveTab('memory')} />
+              <TabButton icon={<Crown className="w-4 h-4" />} label="Plan" active={activeTab === 'plan'} onClick={() => setActiveTab('plan')} />
+              <TabButton icon={<Shield className="w-4 h-4" />} label="Privacy" active={activeTab === 'privacy'} onClick={() => setActiveTab('privacy')} />
+              <TabButton icon={<Download className="w-4 h-4" />} label="Import / Export" active={activeTab === 'data'} onClick={() => setActiveTab('data')} />
+            </NavSection>
           </nav>
 
-          {/* Tab content */}
+          {/* Content */}
           <div className="flex-1 p-6 overflow-y-auto">
             {activeTab === 'api' && <APIKeyTab />}
             {activeTab === 'prompt' && <SystemPromptTab />}
@@ -187,6 +134,18 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   )
 }
 
+function NavSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-3">
+      <div className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5"
+        style={{ color: 'var(--secondary)', opacity: 0.6 }}>
+        {label}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 function TabButton({
   icon,
   label,
@@ -201,78 +160,133 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg
-        transition-colors text-sm
-        ${active ? 'bg-theme-accent theme-primary' : 'hover:bg-theme-accent/50'}`}
+      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl
+        transition-all duration-150 text-[13px]"
+      style={{
+        background: active ? 'var(--accent)' : 'transparent',
+        color: active ? 'var(--primary)' : 'var(--text)',
+        fontWeight: active ? 600 : 400,
+      }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--glass-hover)' }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >
-      {icon}
+      <span style={{ color: active ? 'var(--primary)' : 'var(--secondary)' }}>{icon}</span>
       {label}
     </button>
   )
 }
 
 function APIKeyTab() {
-  const { apiKey, setApiKey } = useStore()
+  const {
+    apiKey, setApiKey,
+    inferenceProvider, setInferenceProvider,
+    inferenceCustomBaseUrl, setInferenceCustomBaseUrl,
+  } = useStore()
   const [showKey, setShowKey] = useState(false)
   const [localKey, setLocalKey] = useState(apiKey)
+  const [localCustom, setLocalCustom] = useState(inferenceCustomBaseUrl)
   const [saved, setSaved] = useState(false)
 
-  const handleBlur = () => {
-    if (localKey !== apiKey) {
-      setApiKey(localKey)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    }
+  useEffect(() => {
+    setLocalKey(apiKey)
+  }, [apiKey])
+  useEffect(() => {
+    setLocalCustom(inferenceCustomBaseUrl)
+  }, [inferenceCustomBaseUrl])
+
+  const bumpSaved = () => {
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold mb-2">OpenRouter API Key</h3>
+        <h3 className="text-lg font-semibold mb-2">Inference provider</h3>
         <p className="text-sm theme-secondary mb-4">
-          Your API key is stored locally and never sent to G0DM0D3 servers.
-          Get your key at{' '}
-          <a
-            href="https://openrouter.ai/keys"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="theme-primary underline"
-          >
-            openrouter.ai
-          </a>
+          Direct chat calls the OpenAI-compatible <code className="text-xs opacity-80">/v1/chat/completions</code> endpoint.
+          ULTRAPLINIAN through the G0DM0D3 API uses <code className="text-xs opacity-80">primary_model</code> for local servers.
         </p>
       </div>
 
-      <div className="relative">
-        <input
-          type={showKey ? 'text' : 'password'}
-          value={localKey}
-          onChange={(e) => setLocalKey(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="sk-or-v1-..."
-          className="w-full px-4 py-3 pr-20 bg-theme-dim border border-theme-primary rounded-lg
-            focus:outline-none focus:glow-box"
-        />
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-          {saved && (
-            <span className="flex items-center gap-1 text-xs text-green-500">
-              <Check className="w-3 h-3" />
-              Saved
-            </span>
-          )}
-          <button
-            onClick={() => setShowKey(!showKey)}
-            className="p-1 hover:theme-primary transition-colors"
-            aria-label={showKey ? 'Hide key' : 'Show key'}
-          >
-            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-        </div>
-      </div>
+      <label className="block text-sm font-medium theme-secondary">Provider</label>
+      <select
+        value={inferenceProvider}
+        onChange={(e) => {
+          setInferenceProvider(e.target.value as import('@/lib/upstream').InferenceProvider)
+          bumpSaved()
+        }}
+        className="w-full px-4 py-2.5 bg-theme-dim border border-theme-primary rounded-lg focus:outline-none"
+      >
+        {(['openrouter', 'lm_studio', 'ollama', 'custom'] as const).map((id) => (
+          <option key={id} value={id}>
+            {id === 'lm_studio' ? 'LM Studio (127.0.0.1:1234)' : id === 'ollama' ? 'Ollama (127.0.0.1:11434)' : id === 'openrouter' ? 'OpenRouter' : 'Custom URL'}
+          </option>
+        ))}
+      </select>
 
-      <p className="text-xs theme-secondary">
-        Changes are saved automatically when you click away.
-      </p>
+      {inferenceProvider === 'custom' && (
+        <div>
+          <label className="block text-sm font-medium theme-secondary mb-1">Custom /v1 base</label>
+          <input
+            type="url"
+            value={localCustom}
+            onChange={(e) => setLocalCustom(e.target.value)}
+            onBlur={() => {
+              if (localCustom !== inferenceCustomBaseUrl) {
+                setInferenceCustomBaseUrl(localCustom)
+                bumpSaved()
+              }
+            }}
+            placeholder="http://127.0.0.1:1234/v1"
+            className="w-full px-4 py-3 bg-theme-dim border border-theme-primary rounded-lg focus:outline-none"
+          />
+        </div>
+      )}
+
+      {(inferenceProvider === 'openrouter') && (
+        <>
+          <div>
+            <h3 className="text-lg font-semibold mb-2 mt-6">OpenRouter API key</h3>
+            <p className="text-sm theme-secondary mb-4">
+              Stored in your browser only. Keys from{' '}
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="theme-primary underline">openrouter.ai</a>
+            </p>
+          </div>
+          <div className="relative">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={localKey}
+              onChange={(e) => setLocalKey(e.target.value)}
+              onBlur={() => {
+                if (localKey !== apiKey) {
+                  setApiKey(localKey)
+                  bumpSaved()
+                }
+              }}
+              placeholder="sk-or-v1-..."
+              className="w-full px-4 py-3 pr-20 bg-theme-dim border border-theme-primary rounded-lg focus:outline-none focus:glow-box"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              {saved && (
+                <span className="flex items-center gap-1 text-xs text-green-500">
+                  <Check className="w-3 h-3" />
+                  Saved
+                </span>
+              )}
+              <button type="button" onClick={() => setShowKey(!showKey)} className="p-1 hover:theme-primary transition-colors" aria-label={showKey ? 'Hide key' : 'Show key'}>
+                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {inferenceProvider !== 'openrouter' && (
+        <p className="text-xs theme-secondary border border-theme-primary/30 rounded-lg p-3">
+          Use the model selector with your local model id (e.g. <code>llama3.2</code>). Ensure the server allows browser CORS, or use the G0DM0D3 API proxy with <strong>LLM_UPSTREAM_BASE_URL</strong> on the server.
+        </p>
+      )}
     </div>
   )
 }
@@ -1119,44 +1133,59 @@ function LiquidTab() {
 
 function AppearanceTab() {
   const { theme, setTheme, showMagic, setShowMagic } = useStore()
-
-  const themes: { id: Theme; name: string; preview: string; emoji: string }[] = [
-    { id: 'matrix', name: 'Matrix', preview: 'bg-matrix-bg border-matrix-primary', emoji: '◉' },
-    { id: 'hacker', name: 'Hacker', preview: 'bg-hacker-bg border-hacker-primary', emoji: '△' },
-    { id: 'glyph', name: 'Glyph', preview: 'bg-glyph-bg border-glyph-primary', emoji: '◈' },
-    { id: 'minimal', name: 'Minimal', preview: 'bg-minimal-bg border-minimal-primary', emoji: '◯' }
-  ]
+  const isDark = theme !== 'light' && theme !== 'minimal'
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <h3 className="text-lg font-semibold mb-2">Theme</h3>
-        <p className="text-sm theme-secondary mb-4">
-          Choose your aesthetic. Each theme affects colors, effects, and mood.
+        <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>Appearance</h3>
+        <p className="text-sm mb-4" style={{ color: 'var(--secondary)' }}>
+          Customize the look and feel of G0DM0DƎ.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {themes.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTheme(t.id)}
-            className={`p-4 rounded-lg border-2 transition-all
-              ${theme === t.id
-                ? 'border-theme-primary glow-box'
-                : 'border-theme-dim hover:border-theme-primary/50'
-              }`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xl">{t.emoji}</span>
-              <span className="font-semibold">{t.name}</span>
+      {/* Dark / Light toggle */}
+      <div className="p-4 rounded-2xl glass">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {isDark ? <Moon className="w-5 h-5" style={{ color: 'var(--primary)' }} /> : <Sun className="w-5 h-5" style={{ color: 'var(--primary)' }} />}
+            <div>
+              <h4 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
+                {isDark ? 'Dark Mode' : 'Light Mode'}
+              </h4>
+              <p className="text-xs" style={{ color: 'var(--secondary)' }}>
+                {isDark ? 'Easy on the eyes, perfect for late nights' : 'Clean and bright, great for daytime'}
+              </p>
             </div>
-            <div className={`h-8 rounded ${t.preview} border`} />
-          </button>
-        ))}
+          </div>
+          <div className="flex gap-1.5 p-1 rounded-xl glass">
+            <button
+              onClick={() => setTheme('light')}
+              className="p-2 rounded-lg transition-all duration-200"
+              style={{
+                background: !isDark ? 'var(--primary)' : 'transparent',
+                color: !isDark ? '#ffffff' : 'var(--secondary)',
+              }}
+              aria-label="Light mode"
+            >
+              <Sun className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setTheme('dark')}
+              className="p-2 rounded-lg transition-all duration-200"
+              style={{
+                background: isDark ? 'var(--primary)' : 'transparent',
+                color: isDark ? '#0a0a0f' : 'var(--secondary)',
+              }}
+              aria-label="Dark mode"
+            >
+              <Moon className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="pt-4 border-t border-theme-primary/20">
+      <div className="pt-2">
         <ToggleSetting
           label="Show Magic"
           description="Display pipeline details on messages — AutoTune params, model tags, feedback buttons, and race response version arrows"
@@ -1227,7 +1256,7 @@ function STMTab() {
     <div className="space-y-4">
       <div>
         <h3 className="text-lg font-semibold mb-2">Semantic Transformation Modules</h3>
-        <p className="text-sm theme-secondary mb-4">
+        <p className="text-sm" style={{ color: 'var(--secondary)' }}>
           STMs modify model outputs to adjust tone, style, or behavior.
           Enable modules to transform responses in real-time.
         </p>
@@ -1235,27 +1264,13 @@ function STMTab() {
 
       <div className="space-y-3">
         {stmModules.map((stm) => (
-          <div
+          <ToggleSetting
             key={stm.id}
-            className="p-4 bg-theme-dim border border-theme-primary rounded-lg"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <h4 className="font-semibold">{stm.name}</h4>
-                <p className="text-sm theme-secondary">{stm.description}</p>
-              </div>
-              <button
-                onClick={() => toggleSTM(stm.id)}
-                className={`w-12 h-6 rounded-full transition-colors relative
-                  ${stm.enabled ? 'bg-green-500' : 'bg-theme-accent'}`}
-              >
-                <span
-                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform
-                    ${stm.enabled ? 'left-7' : 'left-1'}`}
-                />
-              </button>
-            </div>
-          </div>
+            label={stm.name}
+            description={stm.description}
+            enabled={stm.enabled}
+            onChange={() => toggleSTM(stm.id)}
+          />
         ))}
       </div>
     </div>
@@ -2430,10 +2445,10 @@ function ToggleSetting({
   warning?: string
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 p-4 bg-theme-dim border border-theme-primary rounded-lg">
+    <div className="flex items-start justify-between gap-4 p-4 rounded-2xl glass">
       <div className="flex-1">
-        <h4 className="font-semibold">{label}</h4>
-        <p className="text-sm theme-secondary">{description}</p>
+        <h4 className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{label}</h4>
+        <p className="text-sm" style={{ color: 'var(--secondary)' }}>{description}</p>
         {warning && enabled && (
           <p className="text-xs text-yellow-500 mt-1 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
@@ -2443,12 +2458,12 @@ function ToggleSetting({
       </div>
       <button
         onClick={() => onChange(!enabled)}
-        className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0
-          ${enabled ? 'bg-green-500' : 'bg-theme-accent'}`}
+        className={`w-11 h-6 rounded-full transition-all duration-200 relative flex-shrink-0
+          ${enabled ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-zinc-600'}`}
       >
         <span
-          className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform
-            ${enabled ? 'left-7' : 'left-1'}`}
+          className="absolute top-[3px] left-0 w-[18px] h-[18px] rounded-full bg-white shadow-sm"
+          style={{ transition: 'transform 0.2s ease', transform: enabled ? 'translateX(24px)' : 'translateX(3px)' }}
         />
       </button>
     </div>

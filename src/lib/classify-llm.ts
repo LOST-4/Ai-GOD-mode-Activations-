@@ -19,7 +19,7 @@ import { classifyPrompt as classifyRegex } from './classify'
 
 // ── Config ──────────────────────────────────────────────────────────
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+import { chatCompletionsUrl, buildUpstreamHeaders, OPENROUTER_V1_BASE } from '@/lib/upstream'
 
 // Cheap, fast models ideal for classification. Tried in order of preference.
 // These are very cheap on OpenRouter (<$0.10/M tokens).
@@ -150,12 +150,10 @@ export async function classifyWithLLM(
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), CLASSIFY_TIMEOUT_MS)
 
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await fetch(chatCompletionsUrl(OPENROUTER_V1_BASE), {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://godmod3.ai',
+        ...buildUpstreamHeaders(apiKey, OPENROUTER_V1_BASE),
         'X-Title': 'G0DM0D3-Classifier',
       },
       body: JSON.stringify({

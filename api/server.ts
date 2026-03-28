@@ -37,8 +37,12 @@ const PORT = parseInt(process.env.PORT || '7860', 10) // HF Spaces default
 // ── Middleware ─────────────────────────────────────────────────────────
 // CORS: Allow configured origins. When self-hosting, set CORS_ORIGIN=* to allow all.
 const corsOrigins = process.env.CORS_ORIGIN === '*'
-  ? true  // Allow all origins (self-hosted / behind reverse proxy)
-  : [process.env.CORS_ORIGIN || 'https://godmod3.ai', ...(process.env.HF_SPACE_URL ? [process.env.HF_SPACE_URL] : [])].filter(Boolean)
+  ? true
+  : [
+      process.env.CORS_ORIGIN || 'https://godmod3.ai',
+      'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000',
+      ...(process.env.HF_SPACE_URL ? [process.env.HF_SPACE_URL] : []),
+    ].filter(Boolean)
 app.use(cors({ origin: corsOrigins, credentials: false }))
 
 // Security headers via helmet
@@ -49,15 +53,15 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ['https://fonts.gstatic.com'],
-      connectSrc: ["'self'", 'https://openrouter.ai', 'https://*.openrouter.ai', 'https://*.huggingface.co'],
+      connectSrc: ["'self'", 'https://openrouter.ai', 'https://*.openrouter.ai', 'https://*.huggingface.co', 'http://127.0.0.1:11434', 'http://127.0.0.1:1234', 'http://localhost:11434', 'http://localhost:1234', 'http://localhost:3000', 'http://localhost:7860'],
       imgSrc: ["'self'", 'data:', 'blob:'],
       baseUri: ["'none'"],
       formAction: ["'none'"],
       frameAncestors: ["'none'"],
     },
   },
-  crossOriginOpenerPolicy: { policy: 'same-origin' },
-  crossOriginResourcePolicy: { policy: 'same-origin' },
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false,
   frameguard: { action: 'deny' },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
@@ -141,7 +145,9 @@ app.get('/v1/models', (_req, res) => {
   const allModels = [
     ...ULTRAPLINIAN_MODELS.fast,
     ...ULTRAPLINIAN_MODELS.standard,
-    ...ULTRAPLINIAN_MODELS.full,
+    ...ULTRAPLINIAN_MODELS.smart,
+    ...ULTRAPLINIAN_MODELS.power,
+    ...ULTRAPLINIAN_MODELS.ultra,
   ]
 
   const created = Math.floor(Date.now() / 1000)
@@ -185,7 +191,7 @@ app.get('/v1/models', (_req, res) => {
 // ── Tier Info Endpoint (authenticated) ────────────────────────────────
 app.get('/v1/tier', apiKeyAuth, (req, res) => {
   const tier = req.tier || 'free'
-  const config: TierConfig = req.tierConfig
+  const config: TierConfig = req.tierConfig ?? TIER_CONFIGS[tier as keyof typeof TIER_CONFIGS]
   res.json({
     tier: config.name,
     label: config.label,

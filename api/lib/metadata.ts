@@ -34,9 +34,10 @@ export interface MetadataEvent {
 
   // Request shape
   endpoint: string
-  mode: 'standard' | 'ultraplinian' | 'consortium'
+  mode: 'standard' | 'ultraplinian' | 'ultraplinian-failed' | 'ultraplinian-error' | 'consortium'
   tier?: string // fast | standard | full (ultraplinian only)
   stream: boolean
+  error_type?: string
 
   // Pipeline config (what was enabled, not what it produced)
   pipeline: {

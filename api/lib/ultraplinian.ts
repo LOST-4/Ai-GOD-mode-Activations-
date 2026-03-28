@@ -10,6 +10,12 @@
 
 // ── GODMODE System Prompt (imported from single source of truth) ─────
 export { GODMODE_SYSTEM_PROMPT } from '../../src/lib/godmode-prompt'
+import {
+  OPENROUTER_V1_BASE,
+  buildUpstreamHeaders,
+  chatCompletionsUrl,
+  normalizeApiV1Base,
+} from '../../src/lib/upstream'
 
 // ── Depth Directive (appended to all ULTRAPLINIAN prompts) ───────────
 
@@ -228,6 +234,8 @@ interface RaceConfig {
   hardTimeout?: number
   /** Called when each model finishes (scored result). Enables live streaming. */
   onResult?: (result: ModelResult) => void
+  /** OpenAI-root URL ending in /v1 */
+  upstreamV1Base?: string
 }
 
 /**
@@ -292,7 +300,7 @@ export function raceModels(
     const WAVE_DELAY_MS = 150
 
     const launchModel = (model: string) => {
-      queryModel(model, messages, apiKey, params, controller.signal)
+      queryModel(model, messages, apiKey, params, { signal: controller.signal, upstreamV1Base: config.upstreamV1Base })
         .then(result => {
           if (resolved) return
           results.push(result)
@@ -353,9 +361,15 @@ export async function queryModel(
     presence_penalty?: number
     repetition_penalty?: number
   },
-  signal?: AbortSignal,
+  opts?: { signal?: AbortSignal; upstreamV1Base?: string },
 ): Promise<ModelResult> {
   const startTime = Date.now()
+  const signal = opts?.signal
+  const v1Base = opts?.upstreamV1Base
+    ? normalizeApiV1Base(opts.upstreamV1Base)
+    : (process.env.LLM_UPSTREAM_BASE_URL?.trim()
+        ? normalizeApiV1Base(process.env.LLM_UPSTREAM_BASE_URL)
+        : OPENROUTER_V1_BASE)
 
   try {
     const body: Record<string, unknown> = {
@@ -371,12 +385,10 @@ export async function queryModel(
     if (params.presence_penalty !== undefined) body.presence_penalty = params.presence_penalty
     if (params.repetition_penalty !== undefined) body.repetition_penalty = params.repetition_penalty
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetch(chatCompletionsUrl(v1Base), {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://godmod3.ai',
+        ...buildUpstreamHeaders(apiKey, v1Base),
         'X-Title': 'GODMOD3.AI-ultraplinian-api',
       },
       body: JSON.stringify(body),
