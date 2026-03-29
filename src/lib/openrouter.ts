@@ -318,7 +318,9 @@ export async function getModels(apiKey: string, inferenceBaseUrl?: string): Prom
     if (!res.ok) throw new Error('Failed to fetch models')
     const data = await res.json()
     const raw = (data?.data ?? data?.models) as any
-    const models = Array.isArray(raw) ? raw.map(normalizeModelValue).filter(Boolean) : []
+    const models = Array.isArray(raw)
+      ? raw.map(normalizeModelValue).filter((v): v is string => !!v)
+      : []
     if (models.length > 0) return models
     throw new Error('No models returned')
   }
