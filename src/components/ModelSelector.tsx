@@ -261,6 +261,20 @@ const MODELS: ModelInfo[] = [
   },
   // ── Google (Open) ──
   {
+    id: 'google/gemma-4-31b-it:free',
+    name: 'Gemma 4 31B (free)',
+    provider: 'Google',
+    description: 'Dense multimodal, thinking mode, 140+ languages',
+    context: '262K'
+  },
+  {
+    id: 'google/gemma-4-26b-a4b-it:free',
+    name: 'Gemma 4 26B A4B (free)',
+    provider: 'Google',
+    description: 'MoE, 3.8B active per token, multimodal',
+    context: '262K'
+  },
+  {
     id: 'google/gemma-3-27b-it',
     name: 'Gemma 3 27B',
     provider: 'Google',
