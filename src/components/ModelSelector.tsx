@@ -182,13 +182,6 @@ const MODELS: ModelInfo[] = [
   },
   // ── Qwen ──
   {
-    id: 'qwen/qwen3.6-plus',
-    name: 'Qwen 3.6 Plus',
-    provider: 'Qwen',
-    description: 'Hybrid MoE, SWE-bench 78.8, agentic coding',
-    context: '1M'
-  },
-  {
     id: 'qwen/qwen3.5-plus-02-15',
     name: 'Qwen 3.5 Plus',
     provider: 'Qwen',
@@ -268,15 +261,15 @@ const MODELS: ModelInfo[] = [
   },
   // ── Google (Open) ──
   {
-    id: 'google/gemma-4-31b-it',
-    name: 'Gemma 4 31B',
+    id: 'google/gemma-4-31b-it:free',
+    name: 'Gemma 4 31B (free)',
     provider: 'Google',
     description: 'Dense multimodal, thinking mode, 140+ languages',
     context: '262K'
   },
   {
-    id: 'google/gemma-4-26b-a4b-it',
-    name: 'Gemma 4 26B A4B',
+    id: 'google/gemma-4-26b-a4b-it:free',
+    name: 'Gemma 4 26B A4B (free)',
     provider: 'Google',
     description: 'MoE, 3.8B active per token, multimodal',
     context: '262K'
