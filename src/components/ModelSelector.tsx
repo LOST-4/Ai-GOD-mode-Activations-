@@ -338,7 +338,7 @@ const MODELS: ModelInfo[] = [
     id: 'minimax/minimax-m2.7',
     name: 'MiniMax M2.7',
     provider: 'MiniMax',
-    description: 'Latest flagship, 204K context',
+    description: 'Self-evolving, SWE-Pro 56.2%, agentic workflows',
     context: '204K'
   },
   {
@@ -346,7 +346,7 @@ const MODELS: ModelInfo[] = [
     name: 'MiniMax M2.5',
     provider: 'MiniMax',
     description: 'SWE-Bench 80.2%, agentic coding',
-    context: '192K'
+    context: '205K'
   },
   // ── Other ──
   {
